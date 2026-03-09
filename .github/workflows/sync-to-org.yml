@@ -26,8 +26,8 @@ jobs:
 
       - name: Run sync script
         env:
-          PERSONAL_TOKEN: ${{ secrets.PERSONAL_GITHUB_TOKEN }}
-          ORG_TOKEN: ${{ secrets.ORG_GITHUB_TOKEN }}
+          PERSONAL_TOKEN: ${{ secrets.PERSONAL_SYNC_TOKEN }}
+          ORG_TOKEN: ${{ secrets.ORG_SYNC_TOKEN }}
           PERSONAL_USERNAME: ${{ secrets.PERSONAL_USERNAME }}
           ORG_NAME: ${{ secrets.ORG_NAME }}
           EXCLUDE_REPOS: ${{ secrets.EXCLUDE_REPOS }}
@@ -41,7 +41,8 @@ jobs:
           name: sync-report-${{ github.run_id }}
           path: sync_report.json
           retention-days: 30
-          # ─── EMAIL NOTIFICATION BLOCK (Microsoft 365 / Outlook Business) ──────
+
+      # ─── EMAIL NOTIFICATION BLOCK (Microsoft 365 / Outlook Business) ──────
 
       - name: Send Email — Sync Completed Successfully
         if: success()

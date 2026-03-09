@@ -33,7 +33,7 @@ env:
   # CONFIGURE THESE TWO VALUES
   # ================================================================
   PERSONAL_GITHUB_USERNAME: "Texasdada13"   # ← Replace this
-  ORG_SLUG: "https://github.com/patriottechsys"                            # ← Replace this
+  ORG_SLUG: "patriottechsys"                            # ← Replace this
   # ================================================================
 
 jobs:
