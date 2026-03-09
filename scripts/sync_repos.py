@@ -196,49 +196,58 @@ def main():
     for personal_repo in personal_repos:
         repo_name = personal_repo.name
 
-        # Skip empty repos
-        if personal_repo.size == 0 and personal_repo.pushed_at is None:
-            log.info(f"Skipping empty repo: {repo_name}")
-            report["repos_skipped"].append({
-                "repo": repo_name,
-                "reason": "empty repository"
-            })
-            continue
-
-        # NEW REPO: doesn't exist in org
-        if repo_name not in org_repos_map:
-            log.info(f"New repo detected: {repo_name}")
-            org_repo = create_org_repo(org, personal_repo)
-
-            if org_repo:
-                success = mirror_repo(
-                    personal_repo.clone_url,
-                    org_repo.clone_url,
-                    repo_name
-                )
-                if success:
-                    report["new_repos_created"].append(repo_name)
-
-        # EXISTING REPO: check for updates
-        else:
-            org_repo = org_repos_map[repo_name]
-
-            if has_new_commits(personal_repo, org_repo):
-                log.info(f"Update needed: {repo_name}")
-                success = mirror_repo(
-                    personal_repo.clone_url,
-                    org_repo.clone_url,
-                    repo_name
-                )
-                if success:
-                    update_repo_metadata(personal_repo, org_repo)
-                    report["repos_updated"].append(repo_name)
-            else:
-                log.info(f"Up to date, skipping: {repo_name}")
+        try:
+            # Skip empty repos
+            if personal_repo.size == 0 and personal_repo.pushed_at is None:
+                log.info(f"Skipping empty repo: {repo_name}")
                 report["repos_skipped"].append({
                     "repo": repo_name,
-                    "reason": "no new commits"
+                    "reason": "empty repository"
                 })
+                continue
+
+            # NEW REPO: doesn't exist in org
+            if repo_name not in org_repos_map:
+                log.info(f"New repo detected: {repo_name}")
+                org_repo = create_org_repo(org, personal_repo)
+
+                if org_repo:
+                    success = mirror_repo(
+                        personal_repo.clone_url,
+                        org_repo.clone_url,
+                        repo_name
+                    )
+                    if success:
+                        report["new_repos_created"].append(repo_name)
+
+            # EXISTING REPO: check for updates
+            else:
+                org_repo = org_repos_map[repo_name]
+
+                if has_new_commits(personal_repo, org_repo):
+                    log.info(f"Update needed: {repo_name}")
+                    success = mirror_repo(
+                        personal_repo.clone_url,
+                        org_repo.clone_url,
+                        repo_name
+                    )
+                    if success:
+                        update_repo_metadata(personal_repo, org_repo)
+                        report["repos_updated"].append(repo_name)
+                else:
+                    log.info(f"Up to date, skipping: {repo_name}")
+                    report["repos_skipped"].append({
+                        "repo": repo_name,
+                        "reason": "no new commits"
+                    })
+
+        except Exception as e:
+            log.error(f"Unexpected error processing {repo_name}, skipping: {e}")
+            report["errors"].append({
+                "repo": repo_name,
+                "action": "process",
+                "error": str(e)
+            })
 
         # Rate limit protection
         time.sleep(1)
@@ -264,9 +273,8 @@ def main():
 
     log.info("Report saved: sync_report.json")
 
-    # Exit with error code if any errors occurred
     if report["errors"]:
-        exit(1)
+        log.warning(f"{len(report['errors'])} repo(s) had errors — see report for details")
 
 if __name__ == "__main__":
     main()
