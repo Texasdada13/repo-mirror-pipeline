@@ -26,6 +26,13 @@ EXCLUDE_REPOS    = set(
     r.strip() for r in os.getenv("EXCLUDE_REPOS", "").split(",") if r.strip()
 )
 
+# Also load exclusions from config/mirror-config.json if it exists
+_config_path = os.path.join(os.path.dirname(__file__), "..", "config", "mirror-config.json")
+if os.path.exists(_config_path):
+    with open(_config_path) as _f:
+        _config = json.load(_f)
+        EXCLUDE_REPOS.update(_config.get("exclude", []))
+
 # --- Report Tracking ---------------------------------------------------------
 
 report = {

@@ -1,5 +1,5 @@
 {
   "description": "Mirror pipeline configuration for Patriot Tech Systems",
-  "exclude": [],
+  "exclude": ["repo-mirror-pipeline"],
   "notes": "Add repo names to the exclude array to permanently skip them. These repos will never be mirrored even if they are new."
 }
