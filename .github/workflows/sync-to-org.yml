@@ -1,3 +1,17 @@
+# =============================================================================
+# Patriot Tech Systems — Sync Personal Repos to Organization
+#
+# Schedule: Every Friday at 8:00 PM EST (Saturday 01:00 UTC)
+#
+# Required GitHub Secrets:
+#   PERSONAL_SYNC_TOKEN  - PAT with 'repo' scope for Texasdada13
+#   ORG_SYNC_TOKEN       - PAT with 'repo', 'admin:org', and 'workflow' scopes
+#                          for the target org (patriottechsys)
+#   PERSONAL_USERNAME    - Personal GitHub username (e.g. "Texasdada13")
+#   ORG_NAME             - Target org name (e.g. "patriottechsys")
+#   EXCLUDE_REPOS        - (Optional) Comma-separated repo names to skip
+# =============================================================================
+
 name: Sync Personal Repos to Organization
 
 on:
@@ -9,7 +23,7 @@ on:
 jobs:
   sync-repos:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 120
 
     steps:
       - name: Checkout controller repo
@@ -21,8 +35,29 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
+        run: pip install PyGithub
+
+      - name: Validate secrets are set
         run: |
-          pip install PyGithub requests gitpython
+          MISSING=0
+          for SECRET_NAME in PERSONAL_TOKEN ORG_TOKEN PERSONAL_USERNAME ORG_NAME; do
+            VAL=$(printenv "$SECRET_NAME" 2>/dev/null || true)
+            if [ -z "$VAL" ]; then
+              echo "::error::Missing required secret: $SECRET_NAME"
+              MISSING=1
+            else
+              echo "✓ $SECRET_NAME is set"
+            fi
+          done
+          if [ "$MISSING" = "1" ]; then
+            echo "::error::One or more required secrets are missing. See workflow comments for setup instructions."
+            exit 1
+          fi
+        env:
+          PERSONAL_TOKEN: ${{ secrets.PERSONAL_SYNC_TOKEN }}
+          ORG_TOKEN: ${{ secrets.ORG_SYNC_TOKEN }}
+          PERSONAL_USERNAME: ${{ secrets.PERSONAL_USERNAME }}
+          ORG_NAME: ${{ secrets.ORG_NAME }}
 
       - name: Run sync script
         env:
@@ -31,8 +66,7 @@ jobs:
           PERSONAL_USERNAME: ${{ secrets.PERSONAL_USERNAME }}
           ORG_NAME: ${{ secrets.ORG_NAME }}
           EXCLUDE_REPOS: ${{ secrets.EXCLUDE_REPOS }}
-        run: |
-          python scripts/sync_repos.py
+        run: python scripts/sync_repos.py
 
       - name: Upload sync report
         uses: actions/upload-artifact@v4

@@ -1,4 +1,5 @@
 import os
+import sys
 import json
 import logging
 import subprocess
@@ -18,10 +19,21 @@ log = logging.getLogger(__name__)
 
 # --- Config ------------------------------------------------------------------
 
-PERSONAL_TOKEN   = os.environ["PERSONAL_TOKEN"]
-ORG_TOKEN        = os.environ["ORG_TOKEN"]
-PERSONAL_USER    = os.environ["PERSONAL_USERNAME"]
-ORG_NAME         = os.environ["ORG_NAME"]
+def _require_env(name):
+    """Get a required environment variable or exit with a clear message."""
+    value = os.environ.get(name)
+    if not value:
+        log.error(
+            f"Missing required environment variable: {name}. "
+            f"Please set it in your GitHub repository secrets."
+        )
+        sys.exit(1)
+    return value
+
+PERSONAL_TOKEN   = _require_env("PERSONAL_TOKEN")
+ORG_TOKEN        = _require_env("ORG_TOKEN")
+PERSONAL_USER    = _require_env("PERSONAL_USERNAME")
+ORG_NAME         = _require_env("ORG_NAME")
 EXCLUDE_REPOS    = set(
     r.strip() for r in os.getenv("EXCLUDE_REPOS", "").split(",") if r.strip()
 )
@@ -92,7 +104,8 @@ def create_org_repo(org, personal_repo):
 def mirror_repo(personal_repo_url, org_repo_url, repo_name):
     """
     Mirror all branches, tags, and commits from personal -> org.
-    Uses --mirror for full sync without duplicating history.
+    Uses --mirror for full sync. Falls back to a regular push if
+    --mirror fails (e.g. due to protected refs or workflow-scope issues).
     """
     tmp_dir = tempfile.mkdtemp()
     try:
@@ -109,23 +122,45 @@ def mirror_repo(personal_repo_url, org_repo_url, repo_name):
         # Clone mirror from personal
         result = subprocess.run(
             ["git", "clone", "--mirror", auth_personal_url, tmp_dir],
-            capture_output=True, text=True, timeout=300
+            capture_output=True, text=True, timeout=600
         )
         if result.returncode != 0:
             raise RuntimeError(f"Clone failed: {result.stderr}")
 
-        # Push mirror to org
-        result = subprocess.run(
+        # Set push URL to org
+        subprocess.run(
             ["git", "remote", "set-url", "--push", "origin", auth_org_url],
             capture_output=True, text=True, cwd=tmp_dir, timeout=30
         )
 
+        # Try --mirror push first (full sync including all refs)
         result = subprocess.run(
             ["git", "push", "--mirror"],
-            capture_output=True, text=True, cwd=tmp_dir, timeout=300
+            capture_output=True, text=True, cwd=tmp_dir, timeout=600
         )
+
         if result.returncode != 0:
-            raise RuntimeError(f"Push failed: {result.stderr}")
+            stderr = result.stderr
+            # If mirror push fails (protected refs, workflow scope, etc.),
+            # fall back to pushing all branches and tags individually
+            log.warning(
+                f"Mirror push failed for {repo_name}, "
+                f"falling back to branch+tag push: {stderr.strip()}"
+            )
+
+            result = subprocess.run(
+                ["git", "push", "--all", "--force"],
+                capture_output=True, text=True, cwd=tmp_dir, timeout=600
+            )
+            if result.returncode != 0:
+                raise RuntimeError(f"Push --all failed: {result.stderr}")
+
+            result = subprocess.run(
+                ["git", "push", "--tags", "--force"],
+                capture_output=True, text=True, cwd=tmp_dir, timeout=600
+            )
+            if result.returncode != 0:
+                log.warning(f"Push --tags had issues for {repo_name}: {result.stderr.strip()}")
 
         log.info(f"Mirror complete: {repo_name}")
         return True
@@ -185,7 +220,20 @@ def main():
     log.info(f"Starting sync: {PERSONAL_USER} -> {ORG_NAME}")
     log.info("=" * 60)
 
-    org = org_gh.get_organization(ORG_NAME)
+    # Validate tokens by checking API access before doing any work
+    try:
+        auth_user = personal_gh.get_user()
+        log.info(f"Personal token authenticated as: {auth_user.login}")
+    except GithubException as e:
+        log.error(f"Personal token (PERSONAL_TOKEN) is invalid or expired: {e}")
+        sys.exit(1)
+
+    try:
+        org = org_gh.get_organization(ORG_NAME)
+        log.info(f"Org token has access to: {org.login}")
+    except GithubException as e:
+        log.error(f"Org token (ORG_TOKEN) cannot access org '{ORG_NAME}': {e}")
+        sys.exit(1)
 
     personal_repos = get_personal_repos()
     org_repos_map  = get_org_repos()
